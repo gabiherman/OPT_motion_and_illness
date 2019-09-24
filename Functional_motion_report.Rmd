@@ -16,15 +16,13 @@ library(gridExtra)
 library(reshape2)
 library(kableExtra)
 
-setwd("/projects/gherman/studies/OPT/MotionReport/")
-
 ```
 
 
 ```{r}
 #params_init=read.csv(file='/scratch/gherman/mriqc/bold_init.csv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"))
 
-params=read.csv(file='./in/group_bold.tsv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"), sep="\t") %>% separate(data = ., col = bids_name, into = c("subject_id", "session_id", "task_id", "acq_id","run_id","type"), sep='_') %>% mutate(., subject_id=substr(subject_id, 5, 14),  session_id=substr(session_id,5, 7), acq_id=substr(acq_id, 5,7), task_id=substr(task_id,6,10))
+params=read.csv(file='./mriqc_outs/group_bold.tsv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"), sep="\t") %>% separate(data = ., col = bids_name, into = c("subject_id", "session_id", "task_id", "acq_id","run_id","type"), sep='_') %>% mutate(., subject_id=substr(subject_id, 5, 14),  session_id=substr(session_id,5, 7), acq_id=substr(acq_id, 5,7), task_id=substr(task_id,6,10))
 #I should fix the above 
 
 
@@ -33,7 +31,7 @@ params=read.csv(file='./in/group_bold.tsv',header=TRUE, stringsAsFactors = FALSE
 
 params <- params %>% mutate(., mr_id=paste("OPT01",acq_id, substr(subject_id, 4, nchar(subject_id)),session_id,  sep="_"), acq_site=substr(acq_id, 1, 2)) 
 
-rc <- read.csv(file='./in/OPTIMUMMainDatabaseF_DATA_2019-03-06_1221.csv', stringsAsFactors = FALSE, na.strings=c("NA",'', ' '), check.names = FALSE) %>% select(., record_id, redcap_event_name, redcap_data_access_group,mr_date, mr_id) %>% filter(., redcap_event_name=="baseline_arm_6"|redcap_event_name=="6_mth_fu_arm_6", !is.na(mr_id)) %>% mutate(., mr_id=toupper(substr(mr_id, 1, nchar(mr_id)-3)))
+rc <- read.csv(file='/projects/gherman/OPT_motion_vs_phq/in/OPTIMUMMainDatabaseF_DATA_2019-09-24_1307.csv', stringsAsFactors = FALSE, na.strings=c("NA",'', ' '), check.names = FALSE) %>% select(., record_id, redcap_event_name, redcap_data_access_group,mr_date, mr_id) %>% filter(., redcap_event_name=="baseline_arm_6"|redcap_event_name=="6_mth_fu_arm_6", !is.na(mr_id)) %>% mutate(., mr_id=toupper(substr(mr_id, 1, nchar(mr_id)-3)))
 
 combo <- left_join(params, rc) %>% filter(., task_id == "rest")
 
