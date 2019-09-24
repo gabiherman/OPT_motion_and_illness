@@ -1,0 +1,132 @@
+---
+title: "OPT-Neuro Motion Report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning= FALSE, error=FALSE, message = FALSE)
+```
+
+```{r}
+library(plyr)
+library(tidyverse)
+library(jsonlite)
+library(lubridate)
+library(gridExtra)
+library(reshape2)
+library(kableExtra)
+
+setwd("/projects/gherman/studies/OPT/MotionReport/")
+
+```
+
+
+```{r}
+#params_init=read.csv(file='/scratch/gherman/mriqc/bold_init.csv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"))
+
+params=read.csv(file='./in/group_bold.tsv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"), sep="\t") %>% separate(data = ., col = bids_name, into = c("subject_id", "session_id", "task_id", "acq_id","run_id","type"), sep='_') %>% mutate(., subject_id=substr(subject_id, 5, 14),  session_id=substr(session_id,5, 7), acq_id=substr(acq_id, 5,7), task_id=substr(task_id,6,10))
+#I should fix the above 
+
+
+#params=read.csv(file='/home/gabi/Documents/kimel/opt_qc/bold.csv',header=TRUE, stringsAsFactors = FALSE, na.strings=c("NA", '', ' '),colClasses=c("session_id"="character"))
+
+
+params <- params %>% mutate(., mr_id=paste("OPT01",acq_id, substr(subject_id, 4, nchar(subject_id)),session_id,  sep="_"), acq_site=substr(acq_id, 1, 2)) 
+
+rc <- read.csv(file='./in/OPTIMUMMainDatabaseF_DATA_2019-03-06_1221.csv', stringsAsFactors = FALSE, na.strings=c("NA",'', ' '), check.names = FALSE) %>% select(., record_id, redcap_event_name, redcap_data_access_group,mr_date, mr_id) %>% filter(., redcap_event_name=="baseline_arm_6"|redcap_event_name=="6_mth_fu_arm_6", !is.na(mr_id)) %>% mutate(., mr_id=toupper(substr(mr_id, 1, nchar(mr_id)-3)))
+
+combo <- left_join(params, rc) %>% filter(., task_id == "rest")
+
+combo$mr_date <- as.Date(combo$mr_date)
+
+combo <- combo %>% mutate(., date_beforeaft=ifelse(mr_date<'2018-12-14', "before","after")) %>% filter(!is.na(date_beforeaft)) %>% mutate(., scanner=ifelse(acq_id=="CU1"|acq_id=="CU2", "CU1/2", acq_id))
+
+```
+
+This summarizes the MRIQC metrics for framewise displacement, a measure of motion, in OPT-Neuro. It is only examining resting state fMRI scans. This document does not report the quality of structural scans. 
+
+
+The chart below shows how the percentage of scan timepoints above the 0.5mm threshold has changed over time. Each dot represents one run in the scanner - a participant usually has two runs per timepoint. Essentially, this percentage tells us what proportion of each run has too much motion to be useful in analysis.
+
+*The dotted vertical line* represents the *date* of the RA call (December 14, 2018) to discuss strategies to mitigate in-scanner motion.
+
+*The solid horizontal line* at 70% represents a *cutoff* for when the resting state data become unusable due to motion (i.e., a point that lies above the solid line will probably be unsuitable for analysis).
+
+*The dotted horizonal line* at 35% represents a *target* percentage: points below 35% provide higher quality data, and ideally sites can shift their percentages below this line. 
+
+
+```{r, fig.width=7, fig.height=7}
+xstart=as.Date("2017-11-18")
+xend = as.Date("2018-12-14")
+
+xstart2=xend
+#xend2=as.Date(max(combo$mr_date))
+xend2=as.Date("2019-03-06")
+
+p <-  ggplot(data=combo, mapping = (aes(mr_date,fd_perc, col=acq_id)))+  
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  annotate("rect", xmin = xstart, xmax = xend, ymin = -Inf, ymax = Inf, fill = "grey", alpha = 0.5)  +
+  annotate("rect", xmin = xstart2, xmax = xend2, ymin = -Inf, ymax = Inf, fill = "grey", alpha = 0.8)  + 
+  geom_segment(aes(x=xstart,xend=xend2,y=35,yend=35), colour="red", linetype=2, size=0.2)  +
+  geom_segment(aes(x=xstart,xend=xend2,y=70,yend=70), colour="red", linetype=1, size=0.2)  +
+  geom_point() + 
+  labs(color="Scanner")+
+  geom_vline(xintercept=as.Date('2018-12-14'), linetype=3, size) +
+  theme(axis.text.x  = element_text(angle=60, vjust=0.5)) + 
+  xlab("Date of MR Scan") +
+  ylab("Timepoints Above Threshold (%)") + 
+  ggtitle("Percent of TRs Above the 0.5mm FD Threshold Over Time") + 
+  scale_x_date(date_labels = ("%b-%y")) + 
+  facet_wrap(~scanner, ncol=2)  
+#maybe i ca nset the axes
+
+p 
+```
+
+This table summarizes the median framewise displacements, as well as the median percent above threshold, for each scanner:
+
+```{r}
+summary <- combo %>% group_by(acq_id) %>% summarize_at(vars("fd_mean", "fd_perc"),  funs(mean = median(., na.rm = TRUE), sd=sd(.))) %>% mutate(., fd_mean=paste0(round(fd_mean_mean, digits=2), '(', round(fd_mean_sd, digits=2),')'),fd_perc=paste0(round(fd_perc_mean,2), '(', round(fd_perc_sd,2),')')) %>% select(.,acq_id, fd_mean, fd_perc)
+
+summary %>%
+  kable(col.names=c("Scanner", "Median FD (SD)", "Median FD % Above 0.5mm (SD)")) %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F) %>% 
+  column_spec(1, bold = T) %>% 
+  group_rows("CU", 1, 2) %>%
+ group_rows("LA", 3,3) %>% 
+  group_rows("UP", 4, 5) %>% 
+  group_rows("UT", 6, 7) %>%
+  group_rows("WU", 8,9)
+```
+
+
+This demonstrates how the mean framewise displacement has changed over time. Once again, the vertical dotted line represents the date of the RA meeting. 
+```{r ,fig.width=7, fig.height=7}
+xstart=as.Date("2017-11-18")
+xend = as.Date("2018-12-14")
+
+xstart2=xend
+#xend2=as.Date(max(combo$mr_date))
+xend2=as.Date("2019-03-06")
+
+p <-  ggplot(data=combo, mapping = (aes(mr_date,fd_mean, col=acq_id)))+  
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  annotate("rect", xmin = xstart, xmax = xend, ymin = -Inf, ymax = Inf, fill = "grey", alpha = 0.5)  +
+  annotate("rect", xmin = xstart2, xmax = xend2, ymin = -Inf, ymax = Inf, fill = "grey", alpha = 0.8)  + 
+  geom_point() + 
+  geom_vline(xintercept=as.Date('2018-12-14'), linetype=3) + 
+  facet_wrap(~scanner, ncol=2)  + 
+  theme(axis.text.x  = element_text(angle=60, vjust=0.5)) + 
+  xlab("Date of MR Scan") +
+  ylab("Mean FD (mm)") + 
+  ggtitle("Mean Framewise Displacement Over Time") + 
+  scale_x_date(date_labels = ("%b-%y"))
+
+p 
+
+```
+
+
+
